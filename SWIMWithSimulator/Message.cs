@@ -51,7 +51,6 @@ namespace SWIMWithSimulator
 
     class PingMessage : IGetNetworkMessage
     {
-        public long heartbeat;
         public Address memberAddress;
         public List<MemberListEntry> piggyBackMemberList;
         public Message GetMessage()

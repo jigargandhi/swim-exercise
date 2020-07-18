@@ -28,7 +28,7 @@ namespace SWIMWithSimulator
                 Member member = new Member();
                 Address addr = new Address();
                 en.ENinit(addr);
-                node[i] = new MP1(member, param, en, addr);
+                node[i] = new MP1(member, param, en, addr, i == 3 );
 
             }
         }
@@ -48,7 +48,7 @@ namespace SWIMWithSimulator
 
         private void printFinal()
         {
-            foreach(var n in node)
+            foreach (var n in node)
             {
                 Console.WriteLine(n);
             }
@@ -66,10 +66,11 @@ namespace SWIMWithSimulator
                 var removed = random.Next(param.EN_GPSZ);
                 Console.WriteLine($"{node[removed].GetMember().addr} failed at {param.getCurrentTime()}");
                 node[removed].GetMember().bFailed = true;
-            }else if(param.getCurrentTime() == 100)
+            }
+            else if (param.getCurrentTime() == 100)
             {
                 var removed = new Random().Next(param.EN_GPSZ / 2);
-                for(int i= removed;i< removed + param.EN_GPSZ / 2; i++)
+                for (int i = removed; i < removed + param.EN_GPSZ / 2; i++)
                 {
                     Console.WriteLine($"{node[i].GetMember().addr} failed at {param.getCurrentTime()}");
                     node[i].GetMember().bFailed = true;

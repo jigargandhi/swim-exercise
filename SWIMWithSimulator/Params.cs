@@ -48,7 +48,7 @@ namespace SWIMWithSimulator
             STEP_RATE = .25;
             MAX_MSG_SIZE = 4000;
             globaltime = 0;
-            dropmsg = DROP_MSG == 1;
+            dropmsg = false;
             allNodesJoined = 0;
             for (int i = 0; i < EN_GPSZ; i++)
             {

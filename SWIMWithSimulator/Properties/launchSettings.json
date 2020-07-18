@@ -2,7 +2,8 @@
   "profiles": {
     "SWIMWithSimulator": {
       "commandName": "Project",
-      "commandLineArgs": ".\\testcases\\msgdropsinglefailure.conf"
+      "commandLineArgs": ".\\testcases\\multifailure.conf",
+      "remoteDebugEnabled": false
     }
   }
 }

@@ -16,6 +16,7 @@ namespace SWIMWithSimulator
         private int[,] recv_msgs = new int[MAX_NODES + 1, MAX_TIME];
         private Random random;
         const int SEED = 11111;
+        private int droppedMessages;
 
         public EmulNet(Params param)
         {
@@ -25,6 +26,7 @@ namespace SWIMWithSimulator
             this.emulnet.currbuffsize = 0;
             this.enInited = 0;
             this.random = new Random(SEED);
+            this.droppedMessages = 0;
             for (int i = 0; i < MAX_NODES; i++)
             {
                 for (int j = 0; j < MAX_TIME; j++)
@@ -46,7 +48,8 @@ namespace SWIMWithSimulator
             if(emulnet.currbuffsize >= EM.ENBUFFSIZE || 
                 (param.dropmsg && (sendmsg < param.MSG_DROP_PROB * 100 )))
             {
-                //Console.WriteLine($"Dropping message {fromAddress} to {toAdress} with data {message.Data}");
+                droppedMessages++;
+                //Console.WriteLine($"Dropping message {fromAddress} to {toAdress} of type {message.messageType} at {param.getCurrentTime()}");
                 return;
             }
             emulnet.buffer[emulnet.currbuffsize++] = new NetworkMessage()
@@ -88,7 +91,7 @@ namespace SWIMWithSimulator
                 }
             }
 
-            Console.WriteLine($"Sent: {sent} Received:{received}");
+            Console.WriteLine($"Sent: {sent}\tReceived: {received}\tDropped:{droppedMessages}");
         }
     }
 }

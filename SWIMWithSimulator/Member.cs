@@ -22,12 +22,13 @@ namespace SWIMWithSimulator
 		public int pingCounter;
 		// counter for ping timeout
 		public int timeOutCounter;
+		// incarnation number;
+		public int incarnation;
 		// Membership table
-		public List<MemberListEntry> memberList;
-		// My position in the membership table
-		List<MemberListEntry>.Enumerator myPos;
-        // Queue for failure detection messages
-        //queue<q_elt> mp1q;
+		public List<MemberListEntry> activeMembers;
+
+		//Inactive members
+		public List<MemberListEntry> inactiveMembers;
 
         public Member()
         {
@@ -36,13 +37,13 @@ namespace SWIMWithSimulator
 
 		public void PushFirstToBack()
         {
-			if (memberList.Count < 1) return;
-			var firstMember = memberList[0];
-			for(int i = 1; i < memberList.Count; i++)
+			if (activeMembers.Count < 1) return;
+			var firstMember = activeMembers[0];
+			for(int i = 1; i < activeMembers.Count; i++)
             {
-				memberList[i - 1] = memberList[i];
+				activeMembers[i - 1] = activeMembers[i];
             }
-			memberList[memberList.Count - 1] = firstMember;
+			activeMembers[activeMembers.Count - 1] = firstMember;
         }
     }
 }

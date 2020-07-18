@@ -35,7 +35,7 @@ namespace SWIMWithSimulator
 
     class JoinRespMessage : IGetNetworkMessage
     {
-        public MemberListEntry[] memberList;
+        public List<MemberListEntry> piggyBackMemberList;
         public Address memberAddress;
         public long heartbeat;
 
@@ -53,10 +53,14 @@ namespace SWIMWithSimulator
     {
         public long heartbeat;
         public Address memberAddress;
-
+        public List<MemberListEntry> piggyBackMemberList;
         public Message GetMessage()
         {
-            throw new NotImplementedException();
+            return new Message()
+            {
+                messageType = MessageType.PING,
+                Data = JsonConvert.SerializeObject(this),
+            };
         }
     }
 
@@ -64,7 +68,7 @@ namespace SWIMWithSimulator
     {
         public long heartbeat;
         public Address memberAddress;
-
+        public List<MemberListEntry> piggyBackMemberList;
         public Message GetMessage()
         {
             return new Message()
@@ -79,7 +83,7 @@ namespace SWIMWithSimulator
     {
         public Address sourceAddress;
         public Address targetAddress;
-
+        public List<MemberListEntry> piggyBackMemberList;
         public Message GetMessage()
         {
             return new Message()

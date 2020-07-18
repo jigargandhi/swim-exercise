@@ -2,8 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata.Ecma335;
-using System.Text;
 
 namespace SWIMWithSimulator
 {
@@ -18,7 +16,10 @@ namespace SWIMWithSimulator
         private readonly Queue<Message> queue;
         private readonly Dictionary<Address, PingRequest> requestCache;
         private int timeLeft;
-        const int TProtocolPeriod = 10;
+        const int TProtocolPeriod = 20;
+        const int TRoundTripTime = 3;
+        const int KRandomMessage = 4;
+
         public MP1(Member member, Params param, EmulNet network, Address address)
         {
             this.member = member;
@@ -70,72 +71,232 @@ namespace SWIMWithSimulator
             {
                 // New protocol period
                 // choose a random member and send ping to it 
+                
                 timeLeft = TProtocolPeriod;
-                if (member.memberList.Count == 0) return;
-                DetectFailureRemove();
+                if (member.activeMembers.Count == 0) return;
+                DeclareUnreceivedMemberAsSuspected();
                 StartNewSWIMProtocol();
             }
-            else
+            else if (TProtocolPeriod - timeLeft == TRoundTripTime)
             {
-                timeLeft--;
+                CheckIfTargetReceived();
             }
 
+            timeLeft--;
+
+            DeclareTimedOutMembersAsFailed();
+            ClearRequestCache();
+        }
+
+        private void CheckIfTargetReceived()
+        {
+            
+            var peerQueries = member.activeMembers.FirstOrDefault(m => m.queried);
+            //Console.WriteLine("Pinging random K members on {}");
+            if (peerQueries != null)
+            {
+                if (peerQueries.timestamp > peerQueries.queriedOn)
+                {
+                    peerQueries.queried = false;
+                    peerQueries.MemberStatus = MemberStatus.Alive;
+            
+                }
+                else
+                {
+                    PingRandomK();
+                }
+            }
+            
+        }
+
+        private void DeclareTimedOutMembersAsFailed()
+        {
+            for (int i = 0; i < member.activeMembers.Count; i++)
+            {
+                var peer = member.activeMembers[i];
+                var currentTimestamp = param.getCurrentTime();
+
+                if (peer.MemberStatus == MemberStatus.Suspect && currentTimestamp - peer.timestamp > TREMOVE)
+                {
+                    peer.MemberStatus = MemberStatus.Confirm;
+                    // bye bye 
+                    member.activeMembers.RemoveAt(i);
+                    member.inactiveMembers.Add(peer);
+                    Console.WriteLine($"Considering member {peer.address} as failed on {param.getCurrentTime()} at {member.addr.Id}");
+                }
+            }
+        }
+
+        private List<MemberListEntry> GetPayload(int max = 5)
+        {
+            var list = member.activeMembers.Concat(member.inactiveMembers).ToList();
+            list.Add(new MemberListEntry()
+            {
+                address = member.addr,
+                incarnation = member.incarnation,
+                MemberStatus = MemberStatus.Alive
+            });
+            return list;
+        }
+
+        private void Merge(List<MemberListEntry> fromPiggyBack)
+        {
+            foreach (var source in fromPiggyBack)
+            {
+                if (source.address == member.addr) continue;
+                Predicate<MemberListEntry> predicate = m => m.address == source.address;
+                var target = member.activeMembers.Find(predicate);
+                bool memberActive = true;
+                if (target == null)
+                {
+                    target = member.inactiveMembers.Find(predicate);
+                    memberActive = false;
+                }
+                if (target == null)
+                {
+                    if (source.MemberStatus == MemberStatus.Alive || source.MemberStatus == MemberStatus.Suspect)
+                    {
+                        source.queried = false;
+                        source.queriedOn = 0;
+                        member.activeMembers.Add(source);
+                    }
+                    else
+                    {
+                        member.inactiveMembers.Add(source);
+
+                    }
+                }
+                else
+                {
+                    switch (source.MemberStatus)
+                    {
+                        case MemberStatus.Unkown:
+                            break;
+                        case MemberStatus.Alive:
+                            if ((target.MemberStatus == MemberStatus.Alive || target.MemberStatus == MemberStatus.Suspect) && source.incarnation > target.incarnation)
+                            {
+                                target.MemberStatus = MemberStatus.Alive;
+                                target.incarnation = source.incarnation;
+                            }
+                            break;
+                        case MemberStatus.Suspect:
+                            if (target.MemberStatus == MemberStatus.Alive && source.incarnation > target.incarnation)
+                            {
+                                target.MemberStatus = MemberStatus.Suspect;
+                                target.incarnation = source.incarnation;
+                            }
+                            if (target.MemberStatus == MemberStatus.Suspect && source.incarnation >= target.incarnation)
+                            {
+                                target.MemberStatus = MemberStatus.Suspect;
+                                target.incarnation = source.incarnation;
+                            }
+                            break;
+                        case MemberStatus.Confirm:
+                            target.MemberStatus = MemberStatus.Confirm;
+                            target.incarnation = source.incarnation;
+                            if (memberActive)
+                            {
+                                member.activeMembers.Remove(target);
+                                member.inactiveMembers.Add(target);
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+
+        private void DeclareUnreceivedMemberAsSuspected()
+        {
+            foreach (var peer in member.activeMembers)
+            {
+                if (peer.queried)
+                {
+                    Console.WriteLine($"Suspecting member {peer.address} on {member.addr.Id} at {param.getCurrentTime()}");
+                    peer.MemberStatus = MemberStatus.Suspect;
+                    peer.queried = false;
+                    peer.timestamp = param.getCurrentTime();
+                }
+            }
+        }
+
+        private void PingRandomK()
+        {
+            int suspectIndex = -1;
+            for (int i = 0; i < member.activeMembers.Count; i++)
+
+            {
+                var memberEntry = member.activeMembers[i];
+                if (memberEntry.queried && param.getCurrentTime() - memberEntry.timestamp > TRoundTripTime)
+                {
+                    suspectIndex = i;
+                    break;
+                }
+            }
+
+            // there is only one member ignore which is suspected cannot proceed further
+            // lets wait for some other members to discover us.
+            if (suspectIndex == -1 || member.activeMembers.Count == 1) return;
+
+            var random = new Random();
+            for (int i = 0; i < Math.Min(member.activeMembers.Count, KRandomMessage); i++)
+            {
+                int j = -1;
+                do
+                {
+                    j = random.Next(member.activeMembers.Count);
+                } while (j == suspectIndex);
+                //Console.WriteLine($"Pinging {i}th Member {member.activeMembers[j].address} for {member.activeMembers[suspectIndex].address} from {member.addr}  at {param.getCurrentTime()}");
+                network.ENSend(member.addr, member.activeMembers[j].address, new PingReqMessage()
+                {
+                    sourceAddress = member.addr,
+                    targetAddress = member.activeMembers[suspectIndex].address,
+                    piggyBackMemberList = member.activeMembers,
+                }.GetMessage());
+
+
+            }
+        }
+
+        private void ClearRequestCache()
+        {
+            List<Address> toBeKilled = new List<Address>();
+            foreach (var request in requestCache)
+            {
+                if (param.getCurrentTime() - request.Value.requestedOn > TFAIL)
+                {
+                    // safe enough to delete these request 
+                    toBeKilled.Add(request.Key);
+                }
+            }
+
+            foreach (var addr in toBeKilled)
+            {
+                requestCache.Remove(addr);
+            }
         }
 
         private void StartNewSWIMProtocol()
         {
-            if (member.memberList.Count == 0) return; // Do not have any members yet
+            if (member.activeMembers.Count == 0) return; // Do not have any members yet
             member.PushFirstToBack();
 
-            var randomMember = member.memberList[0];
-            if (randomMember.MemberStatus >= MemberStatus.Queried)
+
+            var randomMember = member.activeMembers[0];
+            if (randomMember.queried)
             {
                 return;
             }
             PingMessage message = new PingMessage()
             {
-                memberAddress = member.addr
+                memberAddress = member.addr,
+                piggyBackMemberList = member.activeMembers
             };
-            network.ENSend(member.addr, randomMember.address, new Message()
-            {
-                messageType = MessageType.PING,
-                Data = JsonConvert.SerializeObject(message),
-            });
+
+            network.ENSend(member.addr, randomMember.address, message.GetMessage());
             //Console.WriteLine($"Pinging member {randomMember.address} from {member.addr} at {param.getCurrentTime()}");
-            randomMember.MemberStatus = MemberStatus.Queried;
+            randomMember.queried = true;
+            randomMember.queriedOn = param.getCurrentTime();
             randomMember.timestamp = param.getCurrentTime();
-        }
-
-        private void DetectFailureRemove()
-        {
-            int failedIndex = -1;
-            for (int i = 0; i < member.memberList.Count; i++)
-
-            {
-                var memberEntry = member.memberList[i];
-
-                if (memberEntry.MemberStatus == MemberStatus.Suspect && (param.getCurrentTime() - memberEntry.timestamp + 1 > TREMOVE))
-                {
-                    failedIndex = i;
-                    //Console.WriteLine($"Member {memberEntry.address} detected as and removed at {member.addr} ");
-                    // Ideally node should be removed;
-                    memberEntry.MemberStatus = MemberStatus.Fail;
-                }
-                else if (memberEntry.MemberStatus == MemberStatus.Queried && param.getCurrentTime() - memberEntry.timestamp + 1 > TProtocolPeriod)
-                {
-                    //Console.WriteLine($"Member {memberEntry.address} detected as suspect at {member.addr} ");
-
-                    memberEntry.MemberStatus = MemberStatus.Suspect;
-                }
-
-            }
-
-            if (failedIndex > -1)
-            {
-                var memberToRemove = member.memberList[failedIndex];
-                Console.WriteLine($"Removing member {memberToRemove.address} on {member.addr} at {param.getCurrentTime()}");
-                member.memberList.RemoveAt(failedIndex);
-            }
         }
 
         private void checkMessages()
@@ -156,9 +317,11 @@ namespace SWIMWithSimulator
             member.inGroup = false;
             member.nnb = 0;
             member.heartbeat = 0;
+            member.incarnation = 0;
             member.pingCounter = TFAIL;
             member.timeOutCounter = -1;
-            member.memberList = new List<MemberListEntry>();
+            member.activeMembers = new List<MemberListEntry>();
+            member.inactiveMembers = new List<MemberListEntry>();
             return true;
         }
 
@@ -224,7 +387,7 @@ namespace SWIMWithSimulator
 
             }
             // member is alive
-            var memberEntry = member.memberList.Where(mem => mem.address == ackMessage.memberAddress).First();
+            var memberEntry = member.activeMembers.Where(mem => mem.address == ackMessage.memberAddress).First();
             memberEntry.heartbeat = ackMessage.heartbeat;
             memberEntry.timestamp = param.getCurrentTime();
             memberEntry.MemberStatus = MemberStatus.Alive;
@@ -233,56 +396,34 @@ namespace SWIMWithSimulator
         private void HandlePing(Message message)
         {
             PingMessage pingMessage = JsonConvert.DeserializeObject<PingMessage>(message.Data);
+            Merge(pingMessage.piggyBackMemberList);
+            BeAlive(pingMessage.piggyBackMemberList);
             AckMessage ackMessage = new AckMessage()
             {
                 heartbeat = member.heartbeat,
                 memberAddress = member.addr,
+                piggyBackMemberList = GetPayload(),
             };
-            network.ENSend(member.addr, pingMessage.memberAddress, new Message()
+            network.ENSend(member.addr, pingMessage.memberAddress, ackMessage.GetMessage());
+        }
+
+        private void BeAlive(List<MemberListEntry> piggyBackMemberList)
+        {
+            var mySelfInPing = piggyBackMemberList.Find(m => m.address == member.addr);
+            if (mySelfInPing != null && mySelfInPing.MemberStatus == MemberStatus.Suspect && member.incarnation == mySelfInPing.incarnation)
             {
-                messageType = MessageType.ACK,
-                Data = JsonConvert.SerializeObject(ackMessage),
-            }); ;
+                // time to be alive back
+                member.incarnation++;
+            }
         }
 
         private void HandleJoinResponse(Message message)
         {
             var joinResponse = JsonConvert.DeserializeObject<JoinRespMessage>(message.Data);
             member.inGroup = true;
-            MemberListEntry existingMember;
-            foreach (var memberEntry in joinResponse.memberList)
-            {
-                if ((existingMember = member.memberList.FirstOrDefault(peer => peer.address == member.addr)) != null)
-                {
-                    // merge with existing member
 
-
-                }
-                else
-                {
-                    if (memberEntry.MemberStatus == MemberStatus.Queried)
-                    {
-                        memberEntry.MemberStatus = MemberStatus.Alive;
-                    }
-                    //add
-                    member.memberList.Add(memberEntry);
-                }
-            }
-
-            member.memberList.Add(new MemberListEntry()
-            {
-                timestamp = param.getCurrentTime(),
-                heartbeat = joinResponse.heartbeat,
-                id = joinResponse.memberAddress.addr[0],
-                address = joinResponse.memberAddress,
-                MemberStatus = MemberStatus.Alive,
-            });
-            int index = member.memberList.FindIndex(m => m.address == member.addr);
-
-            if (index >= 0)
-            {
-                member.memberList.RemoveAt(index);
-            }
+            Merge(joinResponse.piggyBackMemberList);
+            BeAlive(joinResponse.piggyBackMemberList);
             ////Console.WriteLine($"Received JOIN Response from {message.memberAddress} to {member.addr} with memberlist {string.Join(",", message.memberList.Select(d => d.address.ToString()).ToArray())}");
         }
 
@@ -290,7 +431,7 @@ namespace SWIMWithSimulator
         {
             var joinReqMessage = JsonConvert.DeserializeObject<JoinReqMessage>(message.Data);
 
-            member.memberList.Add(new MemberListEntry()
+            member.activeMembers.Add(new MemberListEntry()
             {
                 timestamp = param.getCurrentTime(),
                 heartbeat = joinReqMessage.heartbeat,
@@ -301,7 +442,7 @@ namespace SWIMWithSimulator
             var joinResponse = new JoinRespMessage()
             {
                 memberAddress = member.addr,
-                memberList = member.memberList.ToArray(),
+                piggyBackMemberList = GetPayload(),
                 heartbeat = member.heartbeat
             };
 
@@ -311,10 +452,24 @@ namespace SWIMWithSimulator
         private void HandlePingReq(Message message)
         {
             PingReqMessage pingReqMessage = JsonConvert.DeserializeObject<PingReqMessage>(message.Data);
+            Merge(pingReqMessage.piggyBackMemberList);
+            BeAlive(pingReqMessage.piggyBackMemberList);
             if (requestCache.ContainsKey(pingReqMessage.targetAddress))
             {
                 // target address already ping will not send duplicate ping;
                 // todo what is the appropriate time to re ping
+                var request = requestCache[pingReqMessage.targetAddress];
+                if (param.getCurrentTime() - request.requestedOn > TFAIL)
+                {
+                    request.requestedOn = param.getCurrentTime();
+
+                    PingMessage pingMessage = new PingMessage()
+                    {
+                        memberAddress = member.addr,
+                        piggyBackMemberList = GetPayload(),
+                    };
+                    network.ENSend(member.addr, pingReqMessage.targetAddress, pingMessage.GetMessage());
+                }
             }
             else
             {
@@ -327,20 +482,16 @@ namespace SWIMWithSimulator
                 PingMessage pingMessage = new PingMessage()
                 {
                     memberAddress = member.addr,
+                    piggyBackMemberList = GetPayload(),
                 };
-                Message toSend = new Message()
-                {
-                    messageType = MessageType.PING,
-                    Data = JsonConvert.SerializeObject(pingMessage)
-                };
-                network.ENSend(member.addr, pingReqMessage.targetAddress, toSend);
+                network.ENSend(member.addr, pingReqMessage.targetAddress, pingMessage.GetMessage());
             }
         }
 
         public override string ToString()
         {
 
-            return $"Addr: {member.addr}\nQueue Size: {queue.Count}\nIsKilled: {member.bFailed}\nMember List:{string.Join<Address>(',', member.memberList.Select(m => m.address).ToArray())}\n------------------------------";
+            return $"Addr: {member.addr}\nIncarnation: {member.incarnation}\nIsKilled: {member.bFailed}\nMember List:{string.Join(',', member.activeMembers.Select(m => m.address.Id + "-" + m.MemberStatus.ToString()).ToArray())}\nInActivMember:{string.Join(',', member.inactiveMembers.Select(m => m.address.Id + "-" + m.MemberStatus.ToString()).ToArray())}\n------------------------------";
         }
     }
 }

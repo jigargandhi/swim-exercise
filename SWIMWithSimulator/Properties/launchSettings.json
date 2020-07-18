@@ -2,7 +2,7 @@
   "profiles": {
     "SWIMWithSimulator": {
       "commandName": "Project",
-      "commandLineArgs": " C:\\Users\\jgandhi\\source\\repos\\SWIMWithSimulator\\SWIMWithSimulator\\testcases\\singlefailure.conf"
+      "commandLineArgs": ".\\testcases\\msgdropsinglefailure.conf"
     }
   }
 }

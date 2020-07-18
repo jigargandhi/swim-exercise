@@ -9,7 +9,7 @@ namespace SWIMWithSimulator
     {
         public bool Equals([AllowNull] Address x, [AllowNull] Address y)
         {
-            if (x == null || y == null) return false;
+            if (x is null || y is null) return false;
             return x == y;
         }
 

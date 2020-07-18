@@ -8,7 +8,7 @@ namespace SWIMWithSimulator
     class EmulNet
     {
         const int MAX_NODES = 1000;
-        const int MAX_TIME = 3600;
+        const int MAX_TIME = 10000;
         private readonly Params param;
         private readonly EM emulnet;
         private int enInited;
@@ -46,7 +46,7 @@ namespace SWIMWithSimulator
             if(emulnet.currbuffsize >= EM.ENBUFFSIZE || 
                 (param.dropmsg && (sendmsg < param.MSG_DROP_PROB * 100 )))
             {
-                Console.WriteLine($"Dropping message {fromAddress} to {toAdress} with data {message.Data}");
+                //Console.WriteLine($"Dropping message {fromAddress} to {toAdress} with data {message.Data}");
                 return;
             }
             emulnet.buffer[emulnet.currbuffsize++] = new NetworkMessage()

@@ -1,6 +1,6 @@
 # SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol
 
-This repo is exercise implementation of [SWIM membership protocol](http://www.cs.cornell.edu/Info/Projects/Spinglass/public_pdfs/SWIM.pdf) based on the course [Cloud Computing](coursera.org/learn/cloud-computing). 
+This repo is exercise implementation of [SWIM membership protocol](http://www.cs.cornell.edu/Info/Projects/Spinglass/public_pdfs/SWIM.pdf) based on the course [Cloud Computing](https://coursera.org/learn/cloud-computing). 
 The original exercise is in C++. This is same exercise implemented in C#. 
 
 The implementation done in this repo is is efficient SWIM with dissemination done as piggy back on **ping**, **ping-req** and **ack**. 
